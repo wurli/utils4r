@@ -1,0 +1,42 @@
+#' A general ordered if-else
+#'
+#' This behaves like (and is powered by) `[dplyr::case_when()]`, but the output
+#' will be a factor with levels appearing in the order specified. To achieve 
+#' this, additional restrictions are placed on the inputs, namely, that 
+#' the right-hand-side of each formula must produce a character vector.
+#'
+#' @inheritParams dplyr::case_when
+#' @inheritSection dplyr::case_when Value
+#' 
+#' @return A vector
+#' @export
+fct_case_when <- function(..., .default = NULL) {
+  
+  formulae <- list(...)
+  
+  rhs <- formulae |>
+    lapply(rlang::f_rhs) |>
+    lapply(eval, envir = parent.frame())
+  
+  non_chars <- rhs |>
+    vapply(Negate(is.character), logical(1))
+  
+  if (any(non_chars)) {
+    bad <- formulae[non_chars] |>
+      vapply(deparse, character(1))
+    
+    cli::cli_abort(c(
+      "All formulae right-hand-sides must be characters",
+      i = "Check {.code {bad}}"
+    ))
+  }
+  
+  # Avoids running any expensive computations twice
+  for (i in seq_along(formulae)) {
+    rlang::f_rhs(formulae[[i]]) <- rhs[[i]]
+  }
+  
+  case_when(!!!formulae, .default = .default) |>
+    factor(c(unique(unlist(rhs)), .default))
+  
+}
