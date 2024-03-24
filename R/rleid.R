@@ -27,7 +27,8 @@ rleid <- function(...) {
 
     na_change  <- is.na(v) != is.na(v_lead)
     val_change <- v != v_lead
-    na_change | val_change
+    
+    ifelse(is.na(val_change), na_change, val_change)
   })
 
   cumsum(c(TRUE, Reduce(`|`, changes)))
