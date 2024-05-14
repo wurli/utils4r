@@ -1,3 +1,46 @@
+#' Display editable data
+#'
+#' This is a wrapper for [rhandsontable::rhandsontable()] which provides a
+#' easier/more user-friendly interface for setting column/cell settings. NB,
+#' some of the features enabled by this function aren't possible with the
+#' rhandsontable API - in particular, setting options for a single cell. These
+#' features are enabled by [with_hot_settings()] - this function should be used
+#' to set options for individual columns before calling `pretty_hot()`.
+#'
+#' @param x A data frame
+#' @param default_colwidth The default column width
+#' @param ... Passed to [rhandsontable::rhandsontable()]
+#'
+#' @return A handsontable object
+#'
+#' @seealso [with_hot_settings()] to apply settings to rows/columns
+#'
+#' @examples
+#' 
+#' library(dplyr)
+#' 
+#' my_data <- tibble(
+#'   text = c("foo", "bar", "baz"),
+#'   nums = c("100", "200", "12/12/2020"),
+#'   tooltip = c("This is the first cell", NA, NA)
+#' )
+#' 
+#' my_data %>%
+#'   mutate(
+#'     text = with_hot_settings(
+#'       text,
+#'       comment = tooltip,
+#'       possible_values = case_when(row_number() == 3 ~ list(c("baz", "bazzy"))),
+#'       col_width = 300,
+#'       row_heights = ifelse(row_number() == 3, 500, 40)
+#'     ),
+#'     nums = with_hot_settings(
+#'       nums,
+#'       is_date = c(FALSE, FALSE, TRUE)
+#'     ),
+#'     .keep = "none"
+#'   ) %>%
+#'   pretty_hot()
 pretty_hot <- function(x, default_colwidth = 200, ...) {
 
   cell_settings <- x %>%
@@ -90,6 +133,27 @@ pretty_hot <- function(x, default_colwidth = 200, ...) {
 
 }
 
+#' Set options for table columns/cells
+#'
+#' @param x A vector (i.e. a data frame column)
+#' @param comment Text for the cell's comment. If a single value, this will
+#'   be used for the whole column.
+#' @param comment_width,comment_height Dimensions for the comment box
+#' @param possible_values A list of character vectors, where each vector
+#'   gives the valid options for the cell
+#' @param read_only A logical vector. If a single value, this value will be 
+#'   used for the whole column.
+#' @param is_date A logical vector. Determines whether a date selection UI
+#'   should appear when the cell is selected. If a single value, this value 
+#'   will be used for the whole column. 
+#' @param col_width The width for the column
+#' @param row_heights A numeric vector giving heights for individual rows.
+#'   This will obviously affect the other columns in the table too.
+#' @param col_renderer A character string giving a javascript renderer to use
+#'   for the column.
+#'
+#' @return A list
+#'
 with_hot_settings <- function(x,
                               comment = NULL,
                               comment_width = NULL,
