@@ -86,6 +86,18 @@ pretty_hot <- function(x, default_colwidth = 200, ...) {
             out$source <- cell$possible_values
           }
 
+          # Alignment
+          out$className <- paste(c(cell$align_v, cell$align_h), collapse = " ")
+
+          # Cell merging
+          if (!is.null(cell$merge)) {
+            out$merge <- c(
+              out[c("row", "col")],
+              list(rowspan = cell$merge$rowspan, colspan = 1)
+            )
+            out$className <- paste(c(out$className, "htMiddle"), collapse = " ")
+          }
+
           out
         })
     }) %>%
@@ -108,8 +120,11 @@ pretty_hot <- function(x, default_colwidth = 200, ...) {
 
   row_heights <- coalesce(
     !!!map(keep(x, has_hot_settings), attr, "hot_rowheights"),
-    rep(10, nrow(x))
+    rep(30, nrow(x))
   )
+
+  merge <- map(cell_settings, "merge") %>%
+    purrr::compact()
 
   out <- rhandsontable::rhandsontable(
     hot_data,
@@ -118,15 +133,19 @@ pretty_hot <- function(x, default_colwidth = 200, ...) {
     rowHeaders = FALSE,
     cell = cell_settings,
     colWidths = col_widths,
-    allowedTags = "<em><b><strong><a><big><span><ul><li>"
+    mergeCells = merge,
+    allowedTags = "<em><b><strong><a><big><span><ul><li>",
   )
 
   out$x$rowHeights  <- row_heights
   out$x$contextMenu <- list()
 
   for (i in seq_len(ncol(x))) {
-    if (!has_hot_settings(x[[i]])) next
-    out$x$columns[[i]]$renderer <- htmlwidgets::JS(attr(x[[i]], "hot_renderer"))
+    out$x$columns[[i]]$renderer <- if (has_hot_settings(x[[i]])) {
+      htmlwidgets::JS(attr(x[[i]], "hot_renderer"))
+    } else {
+      htmlwidgets::JS(accessibility_renderer())
+    }
   }
 
   out
@@ -146,6 +165,12 @@ pretty_hot <- function(x, default_colwidth = 200, ...) {
 #' @param is_date A logical vector. Determines whether a date selection UI
 #'   should appear when the cell is selected. If a single value, this value 
 #'   will be used for the whole column. 
+#' @param merge_by A vector giving cells to merge by - consecutive repeating
+#'   elements indicate that a merge should take place.
+#' @param align_h Horizontal text alignment. Should be `NULL`, or a character
+#'   vector where each value is one of `c("left", "center", "right", "justify")`
+#' @param align_v Vertical text alignment. Should be `NULL`, or a character
+#'   vector where each value is one of `c("top", "middle", "bottom")`
 #' @param col_width The width for the column
 #' @param row_heights A numeric vector giving heights for individual rows.
 #'   This will obviously affect the other columns in the table too.
@@ -161,9 +186,32 @@ with_hot_settings <- function(x,
                               possible_values = NULL,
                               read_only = FALSE,
                               is_date = FALSE,
+                              merge_by = NULL,
+                              align_h = NULL,
+                              align_v = NULL,
                               col_width = NULL,
                               row_heights = NULL,
                               col_renderer = accessibility_renderer()) {
+
+  if (!is.null(align_h)) {
+    stopifnot(all(align_h %in% c("left", "center", "right", "justify")))
+    align_h <- paste0("ht", str_to_title(align_h))
+  }
+  if (!is.null(align_v)) {
+    stopifnot(all(align_v %in% c("top", "middle", "bottom")))
+    align_v <- paste0("ht", str_to_title(align_v))
+  }
+
+  if (!is.null(merge_by)) {
+    lens <- rle(merge_by)$lengths
+    merge_points <- cumsum(c(1, lens[-length(lens)]))
+
+    merge_by <- map(seq_along(x), function(row) {
+      if (!row %in% merge_points) return(NULL)
+      list(rowspan = lens[merge_points == row])
+    })
+  }
+
   out <- pmap(
     list(
       text = x,
@@ -172,12 +220,16 @@ with_hot_settings <- function(x,
       comment_height = comment_height %||% list(NULL),
       possible_values = possible_values %||% list(NULL),
       read_only = read_only,
-      is_date = is_date
+      is_date = is_date,
+      merge = merge_by %||% list(NULL),
+      align_h = align_h %||% list(NULL),
+      align_v = align_v %||% list(NULL)
     ),
     list
   )
 
   class(out) <- c("hot_settings", class(out))
+  attr(out, "hot_merge")      <- merge_by
   attr(out, "hot_colwidth")   <- col_width
   attr(out, "hot_rowheights") <- row_heights
   attr(out, "hot_renderer")   <- col_renderer
@@ -193,10 +245,12 @@ accessibility_renderer <- function() {
   paste(sep = "\n",
     "function(instance, td, row, col, prop, value, cellProperties) {",
     "  Handsontable.renderers.TextRenderer.apply(this, arguments);",
-    "  td.style.color = 'black';       // Change the text color to black",
+    "  td.style.backgroundColor = cellProperties.readOnly ? '#F9F9F9' : 'white';",
+    "  td.style.color = 'black';",
     "  td.style.fontSize = '14px';     // Change the font size to 14px",
     "  td.style.fontFamily = 'Arial';  // Change the font type to Arial",
     "  safeHtmlRenderer(instance, td, row, col, prop, value, cellProperties)",
     "}"
   )
 }
+
